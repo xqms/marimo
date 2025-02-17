@@ -19,7 +19,6 @@ from marimo._server.api.deps import AppState
 from marimo._server.router import APIRouter
 from marimo._server.templates.templates import (
     home_page_template,
-    inject_script,
     notebook_page_template,
 )
 from marimo._utils.paths import import_files
@@ -111,37 +110,7 @@ async def index(request: Request) -> HTMLResponse:
             mode=app_state.mode,
         )
 
-        # Inject service worker registration with the notebook ID
-        html = _inject_service_worker(html, file_key)
-
     return HTMLResponse(html)
-
-
-def _inject_service_worker(html: str, file_key: str) -> str:
-    return inject_script(
-        html,
-        # Register service worker with the notebook ID
-        # Potentially update the service worker and send the notebook ID again.
-        f"""
-            if ('serviceWorker' in navigator) {{
-                const notebookId = '{uri_encode_component(file_key)}';
-                navigator.serviceWorker.register('./public-files-sw.js?v=2')
-                    .then(registration => {{
-                        registration.active.postMessage({{ notebookId }});
-                    }})
-                    .catch(error => {{
-                        console.error('Error registering service worker:', error);
-                    }});
-                navigator.serviceWorker.ready
-                    .then(registration => {{
-                        registration.update().then(() => registration.active.postMessage({{ notebookId }}));
-                    }})
-                    .catch(error => {{
-                        console.error('Error updating service worker:', error);
-                    }});
-            }}
-            """,
-    )
 
 
 STATIC_FILES = [
@@ -205,40 +174,6 @@ def virtual_file(
         content=buffer_contents,
         media_type=mimetype,
         headers={"Cache-Control": "max-age=86400"},
-    )
-
-
-@router.get("/public-files-sw.js")
-async def public_files_service_worker(request: Request) -> Response:
-    """
-    Service worker that adds the notebook ID to the request headers.
-    """
-    del request
-    return Response(
-        content="""
-        let notebookIdPromise = new Promise((resolve) => {
-            self.addEventListener('message', (event) => {
-                if (event.data.notebookId) {
-                    resolve(event.data.notebookId);
-                }
-            });
-        });
-
-        self.addEventListener('fetch', function(event) {
-            if (event.request.url.includes('/public/')) {
-                event.respondWith(
-                    notebookIdPromise.then(notebookId => {
-                        return fetch(event.request.url, {
-                            headers: {
-                                'X-Notebook-Id': notebookId
-                            }
-                        });
-                    })
-                );
-            }
-        });
-        """,
-        media_type="application/javascript",
     )
 
 

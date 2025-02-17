@@ -248,12 +248,14 @@ async def serve_public_file(request: Request) -> Response:
     """Serve files from the notebook's directory under /public/"""
     app_state = AppState(request)
     filepath = str(request.path_params["filepath"])
-    # Get notebook ID from header
-    notebook_id = request.headers.get("X-Notebook-Id")
-    if notebook_id:
-        # Decode notebook ID
-        notebook_id = uri_decode_component(notebook_id)
-        app_manager = app_state.session_manager.app_manager(notebook_id)
+
+    file_key = (
+        app_state.query_params(FILE_QUERY_PARAM_KEY)
+        or app_state.session_manager.file_router.get_unique_file_key()
+    )
+
+    if file_key:
+        app_manager = app_state.session_manager.app_manager(file_key)
         if app_manager.filename:
             notebook_dir = Path(app_manager.filename).parent
         else:
